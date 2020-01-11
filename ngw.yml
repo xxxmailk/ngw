@@ -1,0 +1,38 @@
+# 挂载点根目录 即NFS导出的根目录
+nfs_root: "/edu"
+clusters:
+  # 集群名称
+  - cluster1:
+    # VIP 地址
+    vip: 192.168.1.11
+    # node 列表
+    nodes:
+      # 节点名称
+      - name: node12
+        # 节点IP
+        ip: 192.168.1.12
+        # 节点ssh用户名(尽量配置root)
+        username: root
+        # 节点ssh密码
+        password: xxxx
+        # 节点ssh端口
+        port: 22
+
+      - name: node13
+        ip: 192.168.1.13
+        password: xxxx
+        port: 22
+
+  - cluster2:
+    vip: 192.168.1.11
+    nodes:
+      - name: node12
+        ip: 192.168.1.12
+        username: root
+        password: xxxx
+        port: 22
+
+      - name: node13
+        ip: 192.168.1.13
+        password: xxxx
+        port: 22

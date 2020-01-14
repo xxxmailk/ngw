@@ -3,7 +3,7 @@
 pack:
 	@echo "-> making package"
 	@if [ ! -d /root/go/dist ];then mkdir /root/go/dist; fi;
-	@tar czvf /root/go/dist/ngw.tar.gz ngw ngw.yml ngw_operator/ngw_operator
+	@cd .. && tar czvf /root/go/dist/ngw.tar.gz ngw/ngw ngw/ngw.yml ngw/ngw_operator/ngw_operator ngw/Makefile
 
 build: build_ngw build_agent
 

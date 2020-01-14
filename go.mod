@@ -7,7 +7,7 @@ require (
 	github.com/pkg/sftp v1.10.1
 	github.com/sirupsen/logrus v1.4.2
 	golang.org/x/crypto v0.0.0-20191219195013-becbf705a915
-	golang.org/x/term v0.0.0-20191110171634-ad39bd3f0407
+	golang.org/x/sys v0.0.0-20191026070338-33540a1f6037 // indirect
 	gopkg.in/yaml.v2 v2.2.2
 )
 

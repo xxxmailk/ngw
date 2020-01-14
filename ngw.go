@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"ngw/conf"
 	"ngw/run"
+	"os"
 )
 
 //**********创建************
@@ -60,10 +61,31 @@ func main() {
 	flag.Parse()
 	if *f_create {
 		if *f_cluster == "" {
-			fmt.Println("error: ")
+			fmt.Println("error: cluster name cannot be null")
+			os.Exit(2)
+		}
+		if *f_pool == "" {
+			fmt.Println("error: pool name cannot be null")
+			os.Exit(2)
+		}
+		if *f_rbd == "" {
+			fmt.Println("error: rbd name cannot be null")
+			os.Exit(2)
 		}
 		run.CreateVolume(*f_cluster, *f_pool, *f_rbd, *f_size, *f_format, *f_force)
 	} else if *f_delete {
+		if *f_cluster == "" {
+			fmt.Println("error: cluster name cannot be null")
+			os.Exit(2)
+		}
+		if *f_pool == "" {
+			fmt.Println("error: pool name cannot be null")
+			os.Exit(2)
+		}
+		if *f_rbd == "" {
+			fmt.Println("error: rbd name cannot be null")
+			os.Exit(2)
+		}
 		run.RemoveVolume(*f_cluster, *f_pool, *f_rbd, *f_format, *f_force)
 	} else if *f_tree {
 		c := conf.GetConfig()

@@ -46,8 +46,8 @@ import (
 
 func main() {
 	var (
-		f_cluster = flag.String("c", "", "要添加卷到哪个集群")
-		f_tree    = flag.Bool("t", false, "列出所有集群")
+		f_cluster = flag.String("cluster", "", "要添加卷到哪个集群")
+		f_tree    = flag.Bool("tree", false, "列出所有集群")
 		f_create  = flag.Bool("create", false, "创建nfs卷时使用该参数")
 		f_delete  = flag.Bool("delete", false, "删除nfs卷时使用该参数")
 		f_pool    = flag.String("pool", "", "添加卷到哪个池")
@@ -57,16 +57,20 @@ func main() {
 		f_force   = flag.Bool("force", false, "是否强制重载nfs网关，如果遇到nfs网关因为有活跃客户端重载失败时，可尝试强制重载")
 	)
 	//func CreateVolume(clusterName, pool, rbd, size string, format, force bool)
+	flag.Parse()
 	if *f_create {
+		if *f_cluster == "" {
+			fmt.Println("error: ")
+		}
 		run.CreateVolume(*f_cluster, *f_pool, *f_rbd, *f_size, *f_format, *f_force)
-	} else if *f_delete{
-		run.RemoveVolume(*f_cluster,*f_pool, *f_rbd, *f_format, *f_force)
-	} else if *f_tree{
-		c :=conf.GetConfig()
-		for _,v := range c.Clusters {
-			fmt.Printf("%s:", v.Name)
-			for _,v1 := range v.Nodes{
-				fmt.Printf("%20s", v1.Name)
+	} else if *f_delete {
+		run.RemoveVolume(*f_cluster, *f_pool, *f_rbd, *f_format, *f_force)
+	} else if *f_tree {
+		c := conf.GetConfig()
+		fmt.Println("Tree node of nfs gateway:")
+		for _, v := range c.Clusters {
+			for _, v1 := range v.Nodes {
+				fmt.Printf("%15s\n", v1.Name)
 			}
 		}
 	} else {

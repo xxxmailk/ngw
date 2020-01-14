@@ -2,7 +2,7 @@
 nfs_root: "/edu"
 clusters:
   # 集群名称
-  - cluster1:
+  - name: cluster1
     # VIP 地址
     vip: 192.168.1.11
     # node 列表
@@ -23,7 +23,7 @@ clusters:
         password: xxxx
         port: 22
 
-  - cluster2:
+  - name: cluster2
     vip: 192.168.1.11
     nodes:
       - name: node12

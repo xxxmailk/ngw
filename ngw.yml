@@ -1,5 +1,5 @@
 # 挂载点根目录 即NFS导出的根目录
-nfs_root: "/edu"
+nfs_root: "/ngw"
 clusters:
   # 集群名称
   - name: cluster1

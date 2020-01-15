@@ -25,7 +25,7 @@ type Node struct {
 	Ip       string `yaml:"ip"`
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
-	Port     int    `yaml:"port"`
+	Port     string `yaml:"port"`
 }
 
 func RefreshConfig(path string) *Cfg {

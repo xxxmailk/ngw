@@ -127,7 +127,7 @@ func NewSSH(ip, port, username, password string) (*Ssh, error) {
 	}
 	client, err := ssh.Dial("tcp", net.JoinHostPort(ip, port), conf)
 	if err != nil {
-		l.Println(err.Error())
+		l.Errorf("dial to ssh server failed, %w, client info: %s", err, net.JoinHostPort(ip, port))
 		panic(err.Error())
 	}
 

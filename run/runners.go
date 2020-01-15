@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"ngw/conf"
 	"ngw/flows"
+	"ngw/log"
 	"ngw/ssh"
 	"regexp"
 	"strings"
@@ -31,7 +32,7 @@ func getClusterByName(name string) conf.Cluster {
 // runner函数必须以Run开头
 // runner函数要求：func(pool, rbd string, speaker chan string) error
 func createSsh(node conf.Node) *ssh.Ssh {
-	s, err := ssh.NewSSH(node.Ip, string(node.Port), node.Username, node.Password)
+	s, err := ssh.NewSSH(node.Ip, node.Port, node.Username, node.Password)
 	if err != nil {
 		panic(fmt.Sprintf("connect to server %s failed %s", node.Name, err))
 	}
@@ -63,31 +64,24 @@ func CloseClusterSsh() {
 }
 
 // 检查agent是否存在
-func checkAgentIsExist(s *ssh.Ssh, speaker chan Message) bool {
+func checkAgentIsExist(s *ssh.Ssh) bool {
+	l := log.GetLogger()
 	buf, err := s.RunCommand("/opt/ngw/ngw_operator -version")
 	if err != nil {
 		return false
 	}
 	if string(buf) != version {
-		speaker <- Message{
-			Type: 2,
-			Msg:  fmt.Sprintf("节点 %s 代理版本异常", s.IP),
-		}
+		l.Errorf("节点 %s 代理版本异常", s.IP)
 		return false
 	}
-	speaker <- Message{
-		Type: 0,
-		Msg:  fmt.Sprintf("节点代理版本为：%s", string(buf)),
-	}
+	l.Infof("节点代理版本为：%s", string(buf))
 	return true
 }
 
 // 如果检测版本不对或命令不存在，则重新发送agent
-func sendAgent(s *ssh.Ssh, speaker chan Message) error {
-	speaker <- Message{
-		Type: 0,
-		Msg:  fmt.Sprintf("检测节点%s代理是否正常", s.IP),
-	}
+func sendAgent(s *ssh.Ssh) error {
+	l := log.GetLogger()
+	l.Infof("检测节点%s代理是否正常", s.IP)
 	var buf []byte
 	var err error
 	buf, err = s.RunCommand("stat /usr/share/ngw")
@@ -98,16 +92,13 @@ func sendAgent(s *ssh.Ssh, speaker chan Message) error {
 		}
 		return err
 	}
-	speaker <- Message{
-		Type: 0,
-		Msg:  string(buf),
-	}
+	l.Debugln(buf)
 	if err := s.SendFile("/usr/share/ngw/ngw_operator", "/usr/share/ngw/"); err != nil {
 		return err
 	}
-	speaker <- Message{Type: 0, Msg: fmt.Sprintf("正在传输agent至: %s", s.IP)}
+	l.Infof("正在传输agent至: %s", s.IP)
 	_, err = s.RunCommand("chmod +x /usr/share/ngw/ngw_operator")
-	if !checkAgentIsExist(s, speaker) {
+	if !checkAgentIsExist(s) {
 		return fmt.Errorf("agent version check failed, send agent failed")
 	}
 	return err
@@ -116,11 +107,11 @@ func sendAgent(s *ssh.Ssh, speaker chan Message) error {
 // **************** 单项执行流程
 // * 优先执行
 // 在所有节点执行，检查代理版本
-func FlowCheckAgent(pool, rbd string, speaker chan Message, args ...string) error {
+func FlowCheckAgent(pool, rbd string, args ...string) error {
 	for k, v := range sshBuf {
 		if k != "VIP" {
-			if !checkAgentIsExist(v, speaker) {
-				return sendAgent(v, speaker)
+			if !checkAgentIsExist(v) {
+				return sendAgent(v)
 			}
 		}
 	}
@@ -128,7 +119,8 @@ func FlowCheckAgent(pool, rbd string, speaker chan Message, args ...string) erro
 }
 
 // 在本地执行，创建rbd
-func FlowCreateRBD(pool, rbd string, speaker chan Message, args ...string) error {
+func FlowCreateRBD(pool, rbd string, args ...string) error {
+	l := log.GetLogger()
 	size := strings.TrimSpace(args[0])
 	if args[0] != "" {
 		return fmt.Errorf("rbd volume size cannot be null")
@@ -137,10 +129,7 @@ func FlowCreateRBD(pool, rbd string, speaker chan Message, args ...string) error
 	if !reg.MatchString(size) {
 		return fmt.Errorf("rbd卷大小\"%s\"格式不正确，请输入： 1024M  10T 等", size)
 	}
-	speaker <- Message{
-		Type: 0,
-		Msg:  fmt.Sprintf("正在%s池中创建rbd: %s, 容量为%d, 该操作可能需要一定时间，请耐心等待", pool, rbd),
-	}
+	l.Infoln("正在%s池中创建rbd: %s, 容量为%s, 该操作可能需要一定时间，请耐心等待", pool, rbd, size)
 	return flows.CreateRbdLocal(pool, rbd, args[0])
 }
 
@@ -150,7 +139,7 @@ func FlowCreateRBD(pool, rbd string, speaker chan Message, args ...string) error
 //}
 
 // 添加rbdmap条目 所有节点执行
-func FlowAddRbdMap(pool, rbd string, speaker chan Message, args ...string) error {
+func FlowAddRbdMap(pool, rbd string, args ...string) error {
 	for k, v := range sshBuf {
 		if k != "VIP" {
 			_, err := v.RunCommand(fmt.Sprintf("%s -action AddRbdMap -pool %s -rbd %s", agentPath, pool, rbd))
@@ -161,7 +150,7 @@ func FlowAddRbdMap(pool, rbd string, speaker chan Message, args ...string) error
 }
 
 // 删除rbdmap条目 所有节点执行, add 方法的回滚
-func FlowRemoveRbdMap(pool, rbd string, speaker chan Message, args ...string) error {
+func FlowRemoveRbdMap(pool, rbd string, args ...string) error {
 	for k, v := range sshBuf {
 		if k != "VIP" {
 			_, err := v.RunCommand(fmt.Sprintf("%s -action DeleteRbdMap -pool %s -rbd %s", agentPath, pool, rbd))
@@ -174,7 +163,7 @@ func FlowRemoveRbdMap(pool, rbd string, speaker chan Message, args ...string) er
 // 在VIP节点执行
 // 挂载rbd，根据参数 arg[0] == "formatConfirm"，判断是否格式化
 // 确认格式化在命令中多次询问
-func FlowMappingRbd(pool, rbd string, speaker chan Message, args ...string) error {
+func FlowMappingRbd(pool, rbd string, args ...string) error {
 	_, err := sshBuf["VIP"].RunCommand(fmt.Sprintf("%s -action RbdMap -pool %s -rbd %s", agentPath, pool, rbd))
 	if err != nil {
 		return err
@@ -188,7 +177,7 @@ func FlowMappingRbd(pool, rbd string, speaker chan Message, args ...string) erro
 
 // 在VIP节点执行，卸载rbd
 // mappingrbd的回滚
-func FlowUnMapRbd(pool, rbd string, speaker chan Message, args ...string) error {
+func FlowUnMapRbd(pool, rbd string, args ...string) error {
 	_, err := sshBuf["VIP"].RunCommand(fmt.Sprintf("%s -action RbdUnMap -pool %s -rbd %s", agentPath, pool, rbd))
 	if err != nil {
 		return err
@@ -197,7 +186,7 @@ func FlowUnMapRbd(pool, rbd string, speaker chan Message, args ...string) error 
 }
 
 // 4、添加/etc/exports 双节点 √
-func FlowAddExports(pool, rbd string, speaker chan Message, args ...string) error {
+func FlowAddExports(pool, rbd string, args ...string) error {
 	c := conf.GetConfig()
 	for k, v := range sshBuf {
 		if k != "VIP" {
@@ -212,7 +201,7 @@ func FlowAddExports(pool, rbd string, speaker chan Message, args ...string) erro
 
 // 4、删除/etc/exports 双节点 √
 // 添加exports的回滚
-func FlowRemoveExports(pool, rbd string, speaker chan Message, args ...string) error {
+func FlowRemoveExports(pool, rbd string, args ...string) error {
 	c := conf.GetConfig()
 	for k, v := range sshBuf {
 		if k != "VIP" {
@@ -228,7 +217,7 @@ func FlowRemoveExports(pool, rbd string, speaker chan Message, args ...string) e
 // 5、执行exportfs  VIP节点  √
 // 根据args[0] == "force"确定是否强制重载, 如果卸载nfs的时候遇到问题，可以考虑强制重载，可能会导致客户端中断重连，理论上不影响业务
 // 无回滚方法
-func FlowApplyExports(pool, rbd string, speaker chan Message, args ...string) error {
+func FlowApplyExports(pool, rbd string, args ...string) error {
 	if args[0] == "force" {
 		_, err := sshBuf["VIP"].RunCommand(fmt.Sprintf("%s -action ExportFsARV --force", agentPath))
 		if err != nil {
@@ -244,14 +233,14 @@ func FlowApplyExports(pool, rbd string, speaker chan Message, args ...string) er
 }
 
 // 6、添加资源到pacemaker vip节点
-func FlowAddResource(pool, rbd string, speaker chan Message, args ...string) error {
+func FlowAddResource(pool, rbd string, args ...string) error {
 	_, err := sshBuf["VIP"].RunCommand(fmt.Sprintf(
 		"%s -action CreateResource --pool %s --rbd %s", agentPath, pool, rbd))
 	return err
 }
 
 // addResource方法的回滚
-func FlowDeleteResource(pool, rbd string, speaker chan Message, args ...string) error {
+func FlowDeleteResource(pool, rbd string, args ...string) error {
 	_, err := sshBuf["VIP"].RunCommand(fmt.Sprintf(
 		"%s -action DeleteResource --pool %s --rbd %s", agentPath, pool, rbd))
 	return err
@@ -273,40 +262,41 @@ func CreateVolume(clusterName, pool, rbd, size string, format, force bool) {
 	// 1:初始化ssh
 	InitClusterSsh(c)
 	// 2:检查agent
-	r.Register(FlowCheckAgent, nil, Message{0, "准备检查节点代理"}, Message{})
+	r.Register(FlowCheckAgent, nil, "准备检查节点代理", "")
 	// 3:创建rbd
-	r.Register(FlowCreateRBD, nil, Message{0, "准备创建rbd"}, Message{}, size)
+	r.Register(FlowCreateRBD, nil, "准备创建rbd", "", size)
 	// 4:添加rbdmap
 	r.Register(FlowAddRbdMap, FlowRemoveRbdMap,
-		Message{0, "准备添加到节点RbdMap配置表"},
-		Message{0, "[RollBack] 准备从RbdMap配置表中删除卷"},
+		"准备添加到节点RbdMap配置表",
+		"[RollBack] 准备从RbdMap配置表中删除卷",
 	)
 	// 5:挂载rbd
 	r.Register(FlowMappingRbd, FlowUnMapRbd,
-		Message{0, "准备挂载rbd到VIP节点"},
-		Message{0, "[RollBack] 准备从VIP节点卸载RBD"},
+		"准备挂载rbd到VIP节点",
+		"[RollBack] 准备从VIP节点卸载RBD",
 		formatConfirm,
 	)
 	// 6:添加exports
 	r.Register(FlowAddExports, FlowRemoveExports,
-		Message{0, "准备添加卷到nfs export项目"},
-		Message{0, "[RollBack] 准备从nfs export中删除卷"},
+		"准备添加卷到nfs export项目",
+		"[RollBack] 准备从nfs export中删除卷",
 	)
 	// 7:重载nfs网关
 	r.Register(FlowApplyExports, FlowApplyExports,
-		Message{0, "准备重载nfs网关"},
-		Message{0, "[RollBack] 准备重载nfs网关"},
+		"准备重载nfs网关",
+		"[RollBack] 准备重载nfs网关",
 		forceExportReload,
 	)
 	// 8:添加到pacemaker集群
 	r.Register(FlowAddResource, FlowDeleteResource,
-		Message{0, "正在添加卷资源到HA集群"},
-		Message{0, "[RollBack] 正在从HA集群中删除卷"},
+		"正在添加卷资源到HA集群",
+		"[RollBack] 正在从HA集群中删除卷",
 	)
 }
 
 func RemoveVolume(clusterName, pool, rbd string, format, force bool) {
 	r := NewRunner(pool, rbd)
+	// close speaker progress
 	c := getClusterByName(clusterName)
 	forceExportReload := ""
 	if force {
@@ -319,32 +309,32 @@ func RemoveVolume(clusterName, pool, rbd string, format, force bool) {
 	// 1:初始化ssh
 	InitClusterSsh(c)
 	// 2:检查agent
-	r.Register(FlowCheckAgent, nil, Message{0, "准备检查节点代理"}, Message{})
+	r.Register(FlowCheckAgent, nil, "准备检查节点代理", "")
 	// 7:从pacemaker集群删除
 	r.Register(FlowDeleteResource, FlowAddResource,
-		Message{0, "正在从HA集群中删除卷"},
-		Message{0, "[RollBack] 正在卷资源到HA集群"},
+		"正在从HA集群中删除卷",
+		"[RollBack] 正在卷资源到HA集群",
 	)
 	// 5:删除exports
 	r.Register(FlowRemoveExports, FlowAddExports,
-		Message{0, "准备添加卷到nfs export项目"},
-		Message{0, "[RollBack] 准备从nfs export中删除卷"},
+		"准备添加卷到nfs export项目",
+		"[RollBack] 准备从nfs export中删除卷",
 	)
 	// 6:重载nfs网关
 	r.Register(FlowApplyExports, FlowRemoveExports,
-		Message{0, "准备从nfs export中删除卷"},
-		Message{0, "[RollBack] 准备添加卷到nfs export项目"},
+		"准备从nfs export中删除卷",
+		"[RollBack] 准备添加卷到nfs export项目",
 		forceExportReload,
 	)
 	// 4:卸载rbd
 	r.Register(FlowUnMapRbd, FlowMappingRbd,
-		Message{0, "准备从VIP节点卸载RBD"},
-		Message{0, "[RollBack] 准备挂载rbd到VIP节点"},
+		"准备从VIP节点卸载RBD",
+		"[RollBack] 准备挂载rbd到VIP节点",
 		formatConfirm,
 	)
 	// 3:从rbdmap删除rbd
 	r.Register(FlowAddRbdMap, FlowRemoveRbdMap,
-		Message{0, "准备从RbdMap配置表中删除卷"},
-		Message{0, "[RollBack] 准备添加到节点RbdMap配置表"},
+		"准备从RbdMap配置表中删除卷",
+		"[RollBack] 准备添加到节点RbdMap配置表",
 	)
 }

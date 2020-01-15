@@ -91,6 +91,7 @@ func main() {
 		c := conf.GetConfig()
 		fmt.Println("Tree node of nfs gateway:")
 		for _, v := range c.Clusters {
+			fmt.Printf("-> %s:\n", v.Name)
 			for _, v1 := range v.Nodes {
 				fmt.Printf("%15s\n", v1.Name)
 			}

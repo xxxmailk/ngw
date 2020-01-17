@@ -23,9 +23,12 @@ type Ssh struct {
 }
 
 func (s *Ssh) RunCommand(cmd string) (rs []byte, err error) {
+	l := log.GetLogger()
 	se := s.NewSshConn()
 	defer se.Close()
-	if buf, err := se.CombinedOutput(cmd + "\n"); err != nil {
+	l.Debugln("create new session successfully")
+	if buf, err := se.CombinedOutput(cmd); err != nil {
+		l.Errorln("run command", cmd, "failed", err)
 		return buf, err
 	} else {
 		if len(buf) == 0 {
@@ -117,8 +120,8 @@ func NewSSH(ip, port, username, password string) (*Ssh, error) {
 	conf := &ssh.ClientConfig{
 		User: username,
 		Auth: []ssh.AuthMethod{
-			ssh.KeyboardInteractive(keyboardInteractiveChallenge),
 			ssh.Password(password),
+			ssh.KeyboardInteractive(keyboardInteractiveChallenge),
 		},
 		//HostKeyCallback: ssh.FixedHostKey(hostKey),
 		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {

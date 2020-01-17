@@ -249,8 +249,11 @@ func FlowDeleteResource(pool, rbd string, args ...string) error {
 // **************** 单项执行流程
 
 func CreateVolume(clusterName, pool, rbd, size string, format, force bool) {
+	l := log.GetLogger()
+	l.Infoln("beginning to create rbd volume")
 	r := NewRunner(pool, rbd)
 	c := getClusterByName(clusterName)
+	l.Debugln("got cluster info ", c)
 	forceExportReload := ""
 	if force {
 		forceExportReload = "force"

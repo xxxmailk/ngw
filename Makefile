@@ -7,6 +7,8 @@ pack:
 
 build: build_ngw build_agent
 
+reinstall: uninstall install
+
 build_ngw:
 	@go mod vendor
 	@go mod tidy
@@ -30,3 +32,15 @@ install:
 	@echo "-> installing ngw command"
 	@install -m 755 ngw /usr/local/bin/ngw
 	@echo "[OK] build binary file successfully"
+
+uninstall:
+	@echo "-> delete agent directory"
+	@rm -rf /usr/share/ngw/
+	@echo "-> delete ngw binary file"
+	@rm -rf /usr/local/bin/ngw
+	@cp /etc/ngw/ngw.yml /tmp/ngw.yml
+	@echo "-> delete config file"
+	@rm -rf /etc/ngw
+	@echo "[ok] uninstall ngw successfully"
+	@echo "config file has been backup to directory: \"/tmp/ngw.yml\""
+	

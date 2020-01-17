@@ -120,14 +120,17 @@ func NewSSH(ip, port, username, password string) (*Ssh, error) {
 	conf := &ssh.ClientConfig{
 		User: username,
 		Auth: []ssh.AuthMethod{
-			ssh.Password(password),
 			ssh.KeyboardInteractive(keyboardInteractiveChallenge),
+			ssh.Password(password),
 		},
 		//HostKeyCallback: ssh.FixedHostKey(hostKey),
-		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
-			return nil
-		},
+		//HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		//	return nil
+		//},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
+	l.Debugf("try to dial remote server %s", ip)
+	l.Tracef("trace ssh client configurations: %v", conf)
 	client, err := ssh.Dial("tcp", net.JoinHostPort(ip, port), conf)
 	if err != nil {
 		l.Errorf("dial to ssh server failed, %w, client info: %s", err, net.JoinHostPort(ip, port))

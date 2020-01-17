@@ -66,7 +66,7 @@ func CloseClusterSsh() {
 // 检查agent是否存在
 func checkAgentIsExist(s *ssh.Ssh) bool {
 	l := log.GetLogger()
-	buf, err := s.RunCommand("/opt/ngw/ngw_operator -version")
+	buf, err := s.RunCommand("/usr/share/ngw/ngw_operator -version")
 	if err != nil {
 		return false
 	}
@@ -84,12 +84,9 @@ func sendAgent(s *ssh.Ssh) error {
 	l.Infof("检测节点%s代理是否正常", s.IP)
 	var buf []byte
 	var err error
-	buf, err = s.RunCommand("stat /usr/share/ngw")
+	buf, err = s.RunCommand("if [ ! -d /usr/share/ngw ];then mkdir -p /usr/share/ngw; fi")
 	if err != nil {
-		buf, err = s.RunCommand("mkdir -p /usr/share/ngw")
-		if err != nil {
-			return err
-		}
+		l.Errorf("create directory /usr/share/ngw failed, %s", err)
 		return err
 	}
 	l.Debugln(buf)
@@ -121,8 +118,9 @@ func FlowCheckAgent(pool, rbd string, args ...string) error {
 // 在本地执行，创建rbd
 func FlowCreateRBD(pool, rbd string, args ...string) error {
 	l := log.GetLogger()
+	l.Debugf("received parameters %s", args)
 	size := strings.TrimSpace(args[0])
-	if args[0] != "" {
+	if args[0] == "" {
 		return fmt.Errorf("rbd volume size cannot be null")
 	}
 	reg := regexp.MustCompile("^\\d+\\w+$")
@@ -262,12 +260,13 @@ func CreateVolume(clusterName, pool, rbd, size string, format, force bool) {
 	if format {
 		formatConfirm = "formatConfirm"
 	}
+	nilFunc := func(pool, rbd string, args ...string) error { return nil }
 	// 1:初始化ssh
 	InitClusterSsh(c)
 	// 2:检查agent
-	r.Register(FlowCheckAgent, nil, "准备检查节点代理", "")
+	r.Register(FlowCheckAgent, nilFunc, "准备检查节点代理", "")
 	// 3:创建rbd
-	r.Register(FlowCreateRBD, nil, "准备创建rbd", "", size)
+	r.Register(FlowCreateRBD, nilFunc, "准备创建rbd", "", size)
 	// 4:添加rbdmap
 	r.Register(FlowAddRbdMap, FlowRemoveRbdMap,
 		"准备添加到节点RbdMap配置表",
@@ -295,6 +294,7 @@ func CreateVolume(clusterName, pool, rbd, size string, format, force bool) {
 		"正在添加卷资源到HA集群",
 		"[RollBack] 正在从HA集群中删除卷",
 	)
+	r.Run()
 }
 
 func RemoveVolume(clusterName, pool, rbd string, format, force bool) {
@@ -340,4 +340,5 @@ func RemoveVolume(clusterName, pool, rbd string, format, force bool) {
 		"准备从RbdMap配置表中删除卷",
 		"[RollBack] 准备添加到节点RbdMap配置表",
 	)
+	r.Run()
 }

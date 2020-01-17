@@ -4,6 +4,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"ngw/log"
 	"reflect"
+	"runtime"
 )
 
 type Handle func(pool, rbd string, args ...string) error
@@ -33,19 +34,34 @@ func (r *Runner) Register(
 	}
 	r.flows[r.cap] = handle
 	r.rollback[r.cap] = rollback
-	r.cap += 1
 	r.args[r.cap] = args
 	r.runMessages[r.cap] = rMessage
 	r.bakMessages[r.cap] = bMessage
-	r.l.Debugf("registering function %s, function id is %d", reflect.TypeOf(handle).Name(), r.cap)
+	r.cap += 1
+	r.l.Debugf("registering function %s, function id is %d",
+		runtime.FuncForPC(reflect.ValueOf(handle).Pointer()).Name(),
+		r.cap)
+}
+
+func GetFuncName(f interface{}) string {
+	return runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()
 }
 
 // 开始运行
 func (r *Runner) Run() {
 	var err error
 	for i := 0; i < r.cap; i++ {
-		r.l.Info(r.runMessages)
+		r.l.Debugf("running method index: %d", i)
+		r.l.Info(r.runMessages[i])
 		// 执行函数
+		r.l.Debugf("runner index %d", i)
+		r.l.Traceln("flows map:", r.flows)
+		r.l.Traceln("back map:", r.rollback)
+		r.l.Traceln("fMsg map:", r.runMessages)
+		r.l.Traceln("bakMsg map:", r.bakMessages)
+		r.l.Traceln("args map:", r.args)
+		r.l.Debugf("runner give parameter args %s", r.args[i])
+		r.l.Debugf("prepare to running function: %s", GetFuncName(r.flows[i]))
 		err = r.flows[i](r.pool, r.rbd, r.args[i]...)
 		// 如果任何一个步骤执行失败，则回滚
 		if err != nil {
@@ -78,6 +94,11 @@ func NewRunner(pool, rbd string) Runner {
 	// close channel
 	r.close = make(chan int)
 	r.pool = pool
+	r.runMessages = make(map[int]string)
+	r.bakMessages = make(map[int]string)
+	r.flows = make(map[int]Handle)
+	r.rollback = make(map[int]Handle)
+	r.args = make(map[int][]string)
 	r.rbd = rbd
 	r.l = log.GetLogger()
 	return *r
